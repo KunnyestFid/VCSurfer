@@ -82,4 +82,4 @@ async def add_serv(id):
         i.close()
     print(f'Added {id}')
 
-client.run('NzQwMDY0MzQ0NjExNzQ5OTI4.XyjkoQ.xaVOpUsKhHlO3TJ1R2GvHD-saoI')
+client.run(REDACTED)
