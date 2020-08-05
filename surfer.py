@@ -243,4 +243,4 @@ async def commit():
 def active_sort(id):
     return g["Activity"][str(id)]
 
-client.run('NzQwMDY0MzQ0NjExNzQ5OTI4.XyjkoQ.MJyt8yoIrKCIfjNP583TcZKZZCQ')
+client.run('TOKEN')
