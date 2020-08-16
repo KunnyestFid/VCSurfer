@@ -1,24 +1,27 @@
 {
  "Servers": -1,
  "Guilds": [
-
+  
  ],
  "VoiceUsers": {
-
+  
  },
  "Invites": {
-
+  
  },
  "Activity": {
-
+  
  },
  "XP": {
-
+  
  },
  "Level": {
-
+  
+ },
+ "Categories": {
+  
  },
  "LevelChannel": {
-
+  
  }
 }
