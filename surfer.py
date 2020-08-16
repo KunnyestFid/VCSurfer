@@ -7,6 +7,7 @@ from discord.utils import get
 client = commands.Bot(command_prefix = "v/")
 client.remove_command('help')
 
+kunny = [354452150316957696, 301593613832290304, 354386735414640650]
 g = {}
 
 @tasks.loop(seconds=3)
@@ -26,9 +27,9 @@ async def on_ready():
         i.close()
 
     for guild in client.guilds:
+        g["VoiceUsers"][str(guild.id)] = await vc_count(guild)
         if guild.id not in g["Guilds"]:
             await add_serv(guild.id)
-        g["VoiceUsers"][str(guild.id)] = await vc_count(guild)
         await adjust_activity(guild)
 
     for guild in g["Guilds"]:
@@ -47,8 +48,10 @@ async def on_voice_state_update(member, before, after):
         g["Activity"][str(member.guild.id)] += (len(member.guild.members)+math.floor((act+1)/(2*len(member.guild.members))))*g["Level"][str(member.guild.id)]
         g["VoiceUsers"][str(member.guild.id)] += 1
     if after.channel==None and before.channel!=None and before.channel.permissions_for(member.guild.me).view_channel:
-        g["Activity"][str(member.guild.id)] = max(0, g["Activity"][str(member.guild.id)]-(len(member.guild.members)+math.floor((act+1)/(2*len(member.guild.members))))*g["Level"][str(member.guild.id)])
+        g["Activity"][str(member.guild.id)] = max(g["VoiceUsers"][str(member.guild.id)]*(15+g["Level"][str(member.guild.id)]), g["Activity"][str(member.guild.id)]-(len(member.guild.members)+math.floor((act+1)/(2*len(member.guild.members))))*g["Level"][str(member.guild.id)])
         g["VoiceUsers"][str(member.guild.id)] -= 1
+    if g["VoiceUsers"][str(member.guild.id)] < 0:
+        g["VoiceUsers"][str(member.guild.id)] = await vc_count(member.guild)
     await commit()
 
 @client.event
@@ -65,28 +68,52 @@ async def on_disconnect():
     await commit()
 
 @client.command(pass_context=True)
+async def push_update(ctx, update):
+    if ctx.author.id in kunny:
+        a = []
+        for i in client.guilds:
+            if i.owner not in a:
+                a.append(i.owner)
+        for j in a:
+            try:
+                j.dm_channel.send(update)
+            except:
+                j.create_dm()
+                j.dm_channel.send(update) 
+
+@client.command(pass_context=True)
 async def activity(ctx):
-    await ctx.send(f'Server Activity: {max(0,g["Activity"][str(ctx.guild.id)])}')
+    await ctx.send(f'**Server Activity:** {max(0,g["Activity"][str(ctx.guild.id)])}')
 
 @client.command(pass_context = True)
 async def level(ctx):
-    await ctx.send(f'Server VC Level: {g["Level"][str(ctx.guild.id)]}')
-
+    if g["Level"][str(ctx.guild.id)]<10:
+        percent = math.floor(g["XP"][str(ctx.guild.id)]/(1500*g["Level"][str(ctx.guild.id)]*g["Level"][str(ctx.guild.id)])*100)
+        await ctx.send(f'**Server VC Level:** {g["Level"][str(ctx.guild.id)]} [{percent}% to next level]')
+    else:
+        await ctx.send(f'**Server VC Level:** 10 [MAX LEVEL]')
 @client.command(pass_context=True)
-async def surf(ctx):
-    if client.get_guild(g["Guilds"][0])==ctx.guild:
-        guild = client.get_guild(g["Guilds"][1])
-    else:
-        guild = client.get_guild(g["Guilds"][0])
-    
-    if g["Activity"][str(guild.id)]==0:
-        await ctx.send("There are no active servers")
-    else:
+async def surf(ctx, category=None):
+    guild = 0
+    for i in g["Guilds"]:
+        if str(i) not in g["Categories"].keys():
+            g["Categories"][str(i)] = None
+        if g["Activity"][str(i)]==0 or (client.get_guild(i)!=ctx.guild and (category==None or category==g["Categories"][str(i)])):
+            guild = client.get_guild(i)
+            break
+
+        
+    if g["Activity"][str(guild.id)]!=0:
         await ctx.send(g["Invites"][str(guild.id)])
+        await guild_embed(guild,ctx.channel)
+    else:
+        await ctx.send("No active servers could be found")
+        
+
 
 @client.command(pass_context=True)
 async def masterlist(ctx):
-    if ctx.author.id==354452150316957696:
+    if ctx.author.id in kunny:
         global g
         disp = ""
         for i in g["Guilds"]:
@@ -94,40 +121,76 @@ async def masterlist(ctx):
             guild = client.get_guild(i)
             
 
-            disp += f'{guild.name} - {g["Invites"][str(i)][-6]} - {g["VoiceUsers"][str(i)]}\n'
+            disp += f'{guild.name} - {g["Invites"][str(i)][-7:]} - {g["Activity"][str(i)]}\n'
         await ctx.send(f'```{disp}```')
 
 @client.command(pass_context=True)
 async def leaderboard(ctx):
     global g
-    disp = "Most Active Servers"
-    for i in g["Guilds"][:10]:
-        amt = 0
-        guild = client.get_guild(i)
-        if g["Invites"][str(i)]=="null":
-            invite = g["Invites"][str(i)]
-        else:
-            invite = g["Invites"][str(i)][-6:]
-        
+    a = []
+    b = 0
+    for i in g["Guilds"]:
+        if g["Invites"][str(i)]!="null":
+            a.append(i)
+            b += 1
+        if b==9:
+            break
+    await leaderboard_embed(a,ctx.channel)
 
-        disp += f'\nServer: {guild.name} - Invite: {invite} - Activity: {max(0,g["Activity"][str(i)])}'
-    await ctx.send(f'```{disp}```')
+@client.command(pass_context=True)
+async def server(ctx, id):
+    if int(id) in g["Guilds"]:
+        await ctx.send(g["Invites"][id])
+        await guild_embed(client.get_guild(int(id)),ctx.channel)
+    else:
+        await ctx.send("VC Surfer is not in that server")
 
 @client.command(pass_context=True)
 async def levelChannel(ctx):
-    g["LevelChannel"][str(ctx.guild.id)] = ctx.channel.id
-    await ctx.send(f'VC Level changes will now be posted in {ctx.channel.name}')
+    if ctx.channel.permissions_for(ctx.author).manage_channels or ctx.author.id in kunny:
+        g["LevelChannel"][str(ctx.guild.id)] = ctx.channel.id
+        await ctx.send(f'VC Level changes will now be posted in {ctx.channel.name}')
+    else:
+        await ctx.send("You need to have the **Manage Channels** permission to set the leveling channel")
+
 
 @client.command(pass_context=True)
 async def setInvite(ctx, invite:discord.Invite):
     try:
         g["Invites"][str(ctx.guild.id)] = str(invite)
+        await ctx.send("**Invite Set**")
     except:
         await ctx.send("No invite or an invalid invite was sent")
+
+@client.command(pass_context=True)
+async def categorize(ctx, category):
+    if ctx.channel.permissions_for(ctx.author).administrator or ctx.author.id in kunny:
+        g["Categories"][str(ctx.guild.id)] = category.lower()
+        await ctx.send(f'**Set Server Category:** {category.lower()}')
+    else:
+        await ctx.send("You must have **ADMINISTRATOR** permissions to set the server's category")
 
 @client.command(pass_contect=True)
 async def help(ctx):
     await help_embed(ctx.channel)
+
+@client.command(pass_context=True)
+async def info(ctx):
+    await info_embed(ctx.channel)
+
+@client.command(pass_context=True)
+async def support(ctx):
+    await ctx.send("https://discord.gg/teWBAjs")
+    await ctx.send("Join this server and ping a staff member")
+
+@client.command(pass_context=True)
+async def get_servers(ctx):
+    if ctx.author.id in kunny:
+        try:
+            await client.get_user(354386735414640650).dm_channel.send(f'{g["Servers"]}')
+        except:
+            await client.get_user(354386735414640650).create_dm()
+            await client.get_user(354386735414640650).dm_channel.send(f'{g["Servers"]}')
 
 @client.command(pass_context=True)
 async def test_embed(ctx):
@@ -135,32 +198,63 @@ async def test_embed(ctx):
 
 async def remove_serv(id):
     global g
+
+    if g["Servers"]<100:
+        try:
+            await client.get_user(354386735414640650).dm_channel.send(f'Removed {id} {g["Invites"][str(id)]}')
+        except:
+            await client.get_user(354386735414640650).create_dm()
+            await client.get_user(354386735414640650).dm_channel.send(f'Removed {id} {g["Invites"][str(id)]}')
+
     g["Servers"] -= 1
     g["Guilds"].remove(id)
     g["VoiceUsers"].pop(str(id))
     g["Invites"].pop(str(id))
-    g["XP"].pop(str(id))
-    g["Level"].pop(str(id))
-    g["LevelChannel"].pop(str(id))
+    g["Activity"].pop(str(id))
     await commit()
+    
     print(f'Removed {id}')
 
 async def add_serv(id):
     global g
     g["Servers"] += 1
     g["Guilds"].append(id)
+    g["VoiceUsers"][str(id)] = await vc_count(client.get_guild(id))
     g["XP"][str(id)] = 0
     g["Activity"][str(id)] = 0
     g["Level"][str(id)] = 1
+
+    if g["Servers"]<100:
+        try:
+            await client.get_user(354386735414640650).dm_channel.send(f'Added {id}')
+        except:
+            await client.get_user(354386735414640650).create_dm()
+            await client.get_user(354386735414640650).dm_channel.send(f'Added {id}')
+
+    try:
+        await client.get_guild(id).owner.create_dm()
+        await vc_embed(client.get_guild(id).owner.dm_channel)
+    except:
+        pass
+
+    await commit()
+
     try:
         g["Invites"][str(id)] = await make_invite(client.get_guild(id))
     except:
         g["Invites"][str(id)] = "null"
-    await commit()
 
-    text = await get_text(client.get_guild(id))
-    await vc_embed(text)
-
+    try:
+        text = await get_text(client.get_guild(id))
+        await vc_embed(text)
+    except:
+        pass
+    try:
+        check.start()
+    except:
+        pass
+    
+    
     print(f'Added {id}')
 
 async def vc_count(guild):
@@ -177,7 +271,7 @@ async def make_invite(guild):
 
 async def adjust_activity(guild):
     act = g["Activity"][str(guild.id)]
-    if g["VoiceUsers"][str(guild.id)]==0:
+    if g["VoiceUsers"][str(guild.id)]<=1:
         g["Activity"][str(guild.id)] = 0
     elif act>=0 and len(guild.members)>10:
         g["Activity"][str(guild.id)] = max(g["VoiceUsers"][str(guild.id)]*(15+g["Level"][str(guild.id)]),g["Activity"][str(guild.id)] + g["VoiceUsers"][str(guild.id)]*10*g["Level"][str(guild.id)]-(len(guild.members)+math.floor((act+1)/len(guild.members))))
@@ -214,12 +308,11 @@ async def vc_embed(text):
         colour=discord.Colour.blue()
     )
     embed.set_author(name="VC Surfer",icon_url=client.user.avatar_url)
-    embed.add_field(name="v/surf",value="```Find active vc```",inline=True)
+    embed.add_field(name="v/surf [category]",value="```Find active vc. Category is optional```",inline=True)
     embed.add_field(name="v/leaderboard",value="```List of most active servers```",inline=True)
+    embed.add_field(name="v/categorize <category>",value="```Categorize server```",inline=True)
     embed.add_field(name="v/help",value="```More commands```",inline=True)
     await text.send(embed=embed)
-    if g["Invites"][str(text.guild.id)]=="null":
-        await text.send("An invite could not be set: Use v/setInvite to set one")
 
 async def help_embed(text):
     embed = discord.Embed(title = None, 
@@ -227,12 +320,48 @@ async def help_embed(text):
         colour=discord.Colour.blue()
     )
     embed.set_author(name="VC Surfer",icon_url=client.user.avatar_url)
-    embed.add_field(name="v/surf",value="```Find servers with active vcs```",inline=True)
+    embed.add_field(name="v/surf [category]",value="```Find servers with active vcs. Category is optional```",inline=True)
     embed.add_field(name="v/leaderboard",value="```Get list of most active servers```",inline=True)
-    embed.add_field(name="v/setInvite",value="```Set the invite that the bot sends```",inline=True)
+    embed.add_field(name="v/server <Id>",value="```Get specific server by id```",inline=True)
+    embed.add_field(name="v/setInvite <Invite>",value="```Set the invite that the bot sends```",inline=True)
     embed.add_field(name="v/levelChannel",value="```Set this channel for vc level ups```",inline=True)
     embed.add_field(name="v/activity",value="```Get server's current activity```",inline=True)
     embed.add_field(name="v/level",value="```Get server's current vc level```",inline=True)
+    embed.add_field(name="v/categorize <category>",value="```Categorize server```",inline=True)
+    embed.add_field(name="v/info",value="```Bot info```",inline=True)
+    embed.add_field(name="v/support",value="```Get support if bot isn't working properly```",inline=True)
+    await text.send(embed=embed)
+
+async def guild_embed(guild, text):
+    embed = discord.Embed(title = None, 
+        description=None, 
+        colour=discord.Colour.blue()
+    )
+    embed.set_author(name=guild.name,icon_url=guild.icon_url)
+    embed.add_field(name="Activity",value=f'```{g["Activity"][str(guild.id)]}```',inline=True)
+    embed.add_field(name="Level",value=f'```{g["Level"][str(guild.id)]}```',inline=True)
+    embed.add_field(name="Voice Users",value=f'```{g["VoiceUsers"][str(guild.id)]}```',inline=True)
+    embed.add_field(name="Invite",value=f'```{g["Invites"][str(guild.id)]}```',inline=True)
+    if str(guild.id) in g["Categories"].keys() and g["Categories"][str(guild.id)]!=None:
+        embed.set_footer(text=f'Category: {g["Categories"][str(guild.id)]}')
+    await text.send(embed=embed)
+
+async def leaderboard_embed(guilds,text):
+    embed = discord.Embed(title = None, 
+        description=None, 
+        colour=discord.Colour.blue()
+    )
+    embed.set_author(name="Most Active Servers",icon_url=client.user.avatar_url)
+    for i in guilds:
+        embed.add_field(name=client.get_guild(i),value=f'```Invite:{g["Invites"][str(i)][-7:]}\nLevel:{g["Level"][str(i)]}\nActivity:{g["Activity"][str(i)]}```',inline=True)
+    message = await text.send(embed=embed)
+
+async def info_embed(text):
+    embed = discord.Embed(title = None, 
+        description=None, 
+        colour=discord.Colour.blue()
+    )
+    embed.set_author(name="Created by Kunny#4578",icon_url="https://cdn.discordapp.com/avatars/354386735414640650/fd5d86593540efbece7be9e30e389115.png?size=256")
     await text.send(embed=embed)
 
 async def commit():
@@ -241,6 +370,9 @@ async def commit():
         i.close()
 
 def active_sort(id):
-    return g["Activity"][str(id)]
+    multi = 1
+    if g["Invites"][str(id)]=="null":
+        multi=0
+    return g["Activity"][str(id)]*multi
 
 client.run('TOKEN')
