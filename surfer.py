@@ -357,4 +357,4 @@ def active_sort(id):
         multi=0
     return g["Activity"][str(id)]*multi
 
-client.run('NzQwMDY0MzQ0NjExNzQ5OTI4.G3jjzn.VU8IODrUGvBrglyRWx8tELRHwXizqsWherkqvw')
+client.run('TOKEN')
