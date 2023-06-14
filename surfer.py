@@ -4,6 +4,7 @@ import json
 import math
 from discord.ext import commands, tasks
 from discord.utils import get
+from discord.ui import Button
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
@@ -14,14 +15,28 @@ client.remove_command('help')
 kunny = 878742808301809674
 
 g = {}
+drop_value = 0
 
 @tasks.loop(seconds=3)
 async def check():
+    global drop_value
     for guild in client.guilds:
         await adjust_activity(guild)
         if g["Activity"][str(guild.id)]>0:
             await add_xp(guild,g["VoiceUsers"][str(guild.id)])
+    drop_value+=1
+    if drop_value == 1200:
+        for guild in client.guilds:
+            await level_down(guild)
+        drop_value = 0
     print('Check')
+
+@tasks.loop(seconds=3600)
+async def drop_level():
+    for guild in client.guilds:
+        if g["VoiceUsers"][str(guild.id)]<=1:
+            await level_down(guild)
+    print('LEVEL DOWN')
 
 @client.event
 async def on_ready():
@@ -238,7 +253,9 @@ async def vc_count(guild):
     amt = 0
     for j in guild.voice_channels:
         if j.permissions_for(guild.me).view_channel:
-            amt += len(j.members)
+            for i in j.members:
+                if not i.bot:
+                    amt+=1
     return amt
 
 async def make_invite(guild):
@@ -250,10 +267,10 @@ async def adjust_activity(guild):
     act = g["Activity"][str(guild.id)]
     if g["VoiceUsers"][str(guild.id)]<=1:
         g["Activity"][str(guild.id)] = 0
-    elif act>=0 and len(guild,members)>100:
-        g["Activity"][str(guild.id)] = min((10*g["VoiceUsers"][str(guild.id)]/len(guild,members))*(g["Level"][str(guild.id)]),g["Level"][str(guild.id)])
-    elif act>=0 and len(guild,members)<=100:
-        g["Activity"][str(guild.id)] = min((g["VoiceUsers"][str(guild.id)])*(g["Level"][str(guild.id)]),g["Level"][str(guild.id)])
+    elif act>=0 and len(guild.members)>100:
+        g["Activity"][str(guild.id)] = min((10*g["VoiceUsers"][str(guild.id)]/len(guild.members))*(g["Level"][str(guild.id)]),g["Level"][str(guild.id)])
+    elif act>=0 and len(guild.members)<=100:
+        g["Activity"][str(guild.id)] = g["VoiceUsers"][str(guild.id)]*(g["Level"][str(guild.id)])
     else:
         g["Activity"][str(guild.id)] = g["VoiceUsers"][str(guild.id)]
     g["Guilds"].sort(key=active_sort,reverse=True)
@@ -274,6 +291,11 @@ async def level_up(guild):
     g["XP"][str(guild.id)] = 0
     if g["Level"][str(guild.id)]<10:
         g["Level"][str(guild.id)] += 1
+
+async def level_down(guild):
+    g["XP"][str(guild.id)] = 0
+    if g["Level"][str(guild.id)]>0:
+        g["Level"][str(guild.id)] -= 1
         
 async def get_text(guild):
     for i in guild.text_channels:
@@ -304,7 +326,6 @@ async def help_embed(text):
     embed.add_field(name="v/leaderboard",value="```Get list of most active servers```",inline=True)
     embed.add_field(name="v/server <Id>",value="```Get specific server by id```",inline=True)
     embed.add_field(name="v/setInvite <Invite>",value="```Set the invite that the bot sends```",inline=True)
-    embed.add_field(name="v/levelChannel",value="```Set this channel for vc level ups```",inline=True)
     embed.add_field(name="v/activity",value="```Get server's current activity```",inline=True)
     embed.add_field(name="v/categorize <category>",value="```Categorize server```",inline=True)
     embed.add_field(name="v/info",value="```Bot info```",inline=True)
@@ -322,7 +343,9 @@ async def guild_embed(guild, text):
     embed.add_field(name="Invite",value=f'```{g["Invites"][str(guild.id)]}```',inline=True)
     if str(guild.id) in g["Categories"].keys() and g["Categories"][str(guild.id)]!=None:
         embed.set_footer(text=f'Category: {g["Categories"][str(guild.id)]}')
+
     await text.send(embed=embed)
+
 
 async def leaderboard_embed(guilds,text):
     embed = discord.Embed(title = None, 
@@ -352,5 +375,4 @@ def active_sort(id):
     if g["Invites"][str(id)]=="null":
         multi=0
     return g["Activity"][str(id)]*multi
-
 client.run(TOKEN)
